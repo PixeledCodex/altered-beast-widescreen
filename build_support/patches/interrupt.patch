@@ -1,0 +1,9 @@
+--- a/m68k_step.c
++++ b/m68k_step.c
+@@ -207,5 +207,5 @@
+     if(c->fault_escape || c->state.fault || level>7)return 0;
+     unsigned previous=c->state.irq_pins;c->state.irq_pins=(uint8_t)level;
+-    if(!level || (level==7 ? previous==7 : level<=(((unsigned)c->state.regs.SR>>8)&7u)))return 0;
++    if(!level || ((level!=7 || previous==7) && level<=(((unsigned)c->state.regs.SR>>8)&7u)))return 0;
+     unsigned active=data_suspend(c);
+     unsigned vector=c->bus.ack_interrupt?c->bus.ack_interrupt(c->user,level):M68K_STEP_AUTOVECTOR;

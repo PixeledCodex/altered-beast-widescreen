@@ -3,3 +3,7 @@
 *.h text eol=lf
 *.md text eol=lf
 CMakeLists.txt text eol=lf
+*.cpp text eol=lf
+*.py text eol=lf
+*.patch text eol=lf whitespace=-blank-at-eol
+build_support/rom-entries.txt text eol=lf

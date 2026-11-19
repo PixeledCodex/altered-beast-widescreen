@@ -12,6 +12,7 @@
 /CMakeUserPresets.json
 *.md
 !/README.md
+!/BUILDING.md
 !/ACKNOWLEDGMENTS.md
 *.bin
 *.gen

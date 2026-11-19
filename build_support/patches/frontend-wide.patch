@@ -1,0 +1,46 @@
+--- a/main_step.c
++++ b/main_step.c
+@@ -196,5 +196,42 @@
+             if(fseek(probe,0,SEEK_SET)!=0)fail("cannot rewind emission buffer");
+             clearerr(probe);
+-            int supported=codegen_emit_step_operation(probe,&rom,&o->ins);
++            M68KInstr semantic=o->ins;
++            if(semantic.addr==0x42D2u){
++                if(semantic.mnemonic!=MN_CMPI || semantic.size!=M68K_SIZE_W ||
++                   semantic.word_count!=2 || semantic.words[0]!=0x0C44u || semantic.words[1]!=96u)
++                    fail("original two-sided annotation instruction differs");
++                semantic.words[1]=56u;
++            }
++            if(semantic.addr==0x42D8u){
++                if(semantic.mnemonic!=MN_CMPI || semantic.size!=M68K_SIZE_W ||
++                   semantic.word_count!=2 || semantic.words[0]!=0x0C44u || semantic.words[1]!=446u)
++                    fail("original two-sided annotation instruction differs");
++                semantic.words[1]=486u;
++            }
++            if(semantic.addr==0x42FEu){
++                if(semantic.mnemonic!=MN_CMPI || semantic.size!=M68K_SIZE_W ||
++                   semantic.word_count!=2 || semantic.words[0]!=0x0C44u || semantic.words[1]!=96u)
++                    fail("original two-sided annotation instruction differs");
++                semantic.words[1]=56u;
++            }
++            if(semantic.addr==0x4304u){
++                if(semantic.mnemonic!=MN_CMPI || semantic.size!=M68K_SIZE_W ||
++                   semantic.word_count!=2 || semantic.words[0]!=0x0C44u || semantic.words[1]!=446u)
++                    fail("original two-sided annotation instruction differs");
++                semantic.words[1]=486u;
++            }
++            if(semantic.addr==0x4340u){
++                if(semantic.mnemonic!=MN_CMPI || semantic.size!=M68K_SIZE_W ||
++                   semantic.word_count!=2 || semantic.words[0]!=0x0C44u || semantic.words[1]!=96u)
++                    fail("original two-sided annotation instruction differs");
++                semantic.words[1]=56u;
++            }
++            if(semantic.addr==0x4346u){
++                if(semantic.mnemonic!=MN_CMPI || semantic.size!=M68K_SIZE_W ||
++                   semantic.word_count!=2 || semantic.words[0]!=0x0C44u || semantic.words[1]!=446u)
++                    fail("original two-sided annotation instruction differs");
++                semantic.words[1]=486u;
++            }
++            int supported=codegen_emit_step_operation(probe,&rom,&semantic);
+             if(fflush(probe)!=0||ferror(probe))fail("cannot flush emission buffer");
+             long length=ftell(probe);if(length<0)fail("cannot size emitted operation");

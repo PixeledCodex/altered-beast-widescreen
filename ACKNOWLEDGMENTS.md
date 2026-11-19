@@ -29,6 +29,7 @@ researchers, and emulator and recompiler authors.
   and joystick support used by the Windows preview.
   [SDL 3.4.20](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.20) · [zlib license](https://github.com/libsdl-org/SDL/blob/release-3.4.20/LICENSE.txt)
 
+
 ## Independent validation
 
 - **Genesis Plus GX and libretro contributors** provided the reference core
@@ -40,3 +41,12 @@ researchers, and emulator and recompiler authors.
 The original game and upstream components retain their respective rights and
 licenses. See [GenesisRecomp's third-party notices](https://github.com/mstan/segagenesisrecomp/blob/9cedc86d96c4886919083e4ab2321aa22ffa4078/THIRD-PARTY-LICENSES.md)
 for the components it vendors. The project source license remains open.
+
+## Build patches
+
+The four patches under `build_support/patches/` apply to local copies of
+the pinned upstream sources. They carry forward copied-RAM generation, the
+six widened sprite comparisons, and the interrupt and VDP fixes used by
+the preview. Upstream fragments in those patches are by Matthew Stan and the
+GenesisRecomp and m68k-recomp-core contributors and retain their upstream
+[PolyForm Noncommercial 1.0.0 terms](https://polyformproject.org/licenses/noncommercial/1.0.0/).

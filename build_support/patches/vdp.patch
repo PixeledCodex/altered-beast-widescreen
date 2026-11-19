@@ -1,0 +1,203 @@
+--- a/genesis_vdp.c
++++ b/genesis_vdp.c
+@@ -1,4 +1,4 @@
+ /*
+- * genesis_vdp.c — clean-room Sega Genesis VDP (315-5313): core + DMA.
++ * genesis_vdp.c â€” clean-room Sega Genesis VDP (315-5313): core + DMA.
+  *
+  * Original implementation from documented hardware behaviour (see the header for
+@@ -88,5 +88,5 @@
+ #define MODE4_SHI(v)        (REG_MODE4(v) & 0x08)   /* shadow/highlight        */
+ /* Interlace select (reg $0C bits 2:1): 00/10 = none, 01 = interlace mode 1
+- * (same resolution), 11 = interlace mode 2 — DOUBLE vertical resolution:
++ * (same resolution), 11 = interlace mode 2 â€” DOUBLE vertical resolution:
+  * 448 output lines, 8x16-pixel cells (64 bytes each) for planes AND sprites,
+  * sprite Y/size and vertical scroll in double-res units. Sonic 2's 2P
+@@ -144,5 +144,5 @@
+  * probes connect and query backward (PRINCIPLES.md #17), they never arm.
+  * File-static (single own-backend VDP instance per process) so the GVDP
+- * struct — and with it the raw save-state image — keeps its layout. */
++ * struct â€” and with it the raw save-state image â€” keeps its layout. */
+ GVdpEvent g_gvdp_events[GVDP_EVENT_CAP];
+ uint32_t  g_gvdp_event_seq = 0;
+@@ -171,5 +171,5 @@
+ int gvdp_display_enabled(const GVDP *v){ return MODE2_DISPLAY_ON(v) ? 1 : 0; }
+ /* Output rows per frame: doubled in interlace mode 2 (two fields' worth,
+- * rendered progressively — the scheduler emits two output rows per raster
++ * rendered progressively â€” the scheduler emits two output rows per raster
+  * line). gvdp_screen_height stays the RASTER height (raster timing, H-int,
+  * V-int are unchanged by interlace). */
+@@ -233,4 +233,14 @@
+ }
+ 
++/* DMA completion updates the low source word even for fill. The 16-bit
++ * length encoding naturally makes zero/65536 wrap the source word unchanged. */
++static void dma_finish_registers(GVDP *v)
++{
++    uint16_t end = (uint16_t)(v->reg[21] + ((unsigned)v->reg[22] << 8)
++                           + v->reg[19] + ((unsigned)v->reg[20] << 8));
++    v->reg[21] = (uint8_t)end; v->reg[22] = (uint8_t)(end >> 8);
++    v->reg[19] = v->reg[20] = 0;
++}
++
+ static void dma_run_68k_to_vdp(GVDP *v)
+ {
+@@ -238,20 +248,20 @@
+     uint32_t src = dma_source_68k(v);
+     if (!v->bus_read) return;
+-    /* Hardware freezes the 68K for the whole 68K->VDP transfer. Bandwidth is
+-     * raster-gated access slots: ~205 words/line with the display blanked
+-     * (vblank or display off; ~166 in H32), ~18 words/line during active
+-     * display (~16 in H32). 488 68K cycles per line. Without this charge the
+-     * V-int handler's big vblank DMAs (sprite table, hscroll, queued art)
+-     * consume zero raster time and the main loop resumes tens of lines
+-     * earlier than hardware. */
++    /* The 68K is frozen for memory DMA. VRAM takes two byte access slots
++     * per word; CRAM/VSRAM take one word slot. This remains a coarse bandwidth
++     * charge, without FIFO phase or progressive transfer-data effects. */
+     {
+         int blanked = v->in_vblank || !MODE2_DISPLAY_ON(v);
+-        uint32_t slots = blanked ? (MODE4_H40(v) ? 205u : 166u)
+-                                 : (MODE4_H40(v) ? 18u  : 16u);
+-        uint32_t charge = (uint32_t)(((uint64_t)len * 488u) / slots);
++        /* Slots are byte accesses for VRAM, word accesses for CRAM/VSRAM.
++         * Coarse line-average timing, rounded upward to whole 68K clocks. */
++        int vram = (v->code & 0x0f) == CODE_VRAM_WRITE;
++        uint32_t slots = blanked ? (MODE4_H40(v) ? (vram ? 204u : 198u) : (vram ? 166u : 161u))
++                                 : (MODE4_H40(v) ? 18u : 16u);
++        uint32_t units = vram ? 2u : 1u;
++        uint32_t charge = (uint32_t)(((uint64_t)len * units * 3420u + slots * 7u - 1u) / (slots * 7u));
+         s_pending_68k_stall += charge;
+ #ifdef GEN_DEV_TRACE
+         /* [DMA-STALL] any single 68K->VDP transfer charging more than ~half a
+-         * frame of 68K freeze is wildly outside S1's real DMA sizes — dump the
++         * frame of 68K freeze is wildly outside S1's real DMA sizes â€” dump the
+          * transfer so a corrupt length/slot-rate is visible. Rare-event print. */
+         if (charge > 60000u) {
+@@ -271,4 +281,5 @@
+         src = (src & 0xFE0000u) | ((src + 2) & 0x01FFFFu);
+     }
++    dma_finish_registers(v);
+ }
+ 
+@@ -295,4 +306,5 @@
+         v->address = (uint16_t)(v->address + REG_AUTOINC(v));
+     }
++    dma_finish_registers(v);
+ }
+ 
+@@ -311,4 +323,5 @@
+     }
+     v->dma_fill_pending = 0;
++    dma_finish_registers(v);
+ }
+ 
+@@ -453,9 +466,6 @@
+     if (v->dma_active)       s |= 0x0002;
+     v->vint_pending = 0;
+-    /* Advance a phantom H-blank between status reads so 68K routines that pace
+-     * on the H-blank flag (e.g. Sonic 1's SEGA-chant DAC feeder, which polls
+-     * $C00004 bit 2 between samples) make progress under our per-whole-line
+-     * renderer instead of spinning forever. */
+-    v->in_hblank ^= 1;
++    v->sprite_overflow = v->sprite_collision = 0;
++    /* Raster state advances only through the host scheduler. */
+     return s;
+ }
+@@ -619,5 +629,5 @@
+  * so the window never resizes between menus and gameplay. Clamped to the
+  * output buffer. Like s_ws_extra, kept OUTSIDE the GVDP struct (present-time
+- * render parameter, not hardware state — must not enter save images). */
++ * render parameter, not hardware state â€” must not enter save images). */
+ static int s_ws_canvas_w = 0;
+ void gvdp_set_ws_canvas(int canvas_w)
+@@ -633,6 +643,6 @@
+ 
+ /* Widescreen Plane-B diagnostic (GENESIS_WS_BGDIAG): force Plane B's horizontal
+- * scroll to a single constant (line-0) value on every scanline — removing the
+- * per-line parallax — while keeping the widened (448) render. If the EHZ
++ * scroll to a single constant (line-0) value on every scanline â€” removing the
++ * per-line parallax â€” while keeping the widened (448) render. If the EHZ
+  * background diagonal vanishes with this on, the cause is the per-line-hscroll
+  * (parallax) interaction, not the game-side tile redraw. Also marks the output
+@@ -679,5 +689,5 @@
+     int cell_h_shift  = im2 ? 4 : 3;          /* cell height 16 or 8 px        */
+     int tile_bytes    = im2 ? 64 : 32;
+-    uint16_t sat = (uint16_t)((REG_SPRITE_NT(v) & 0x7F) << 9);
++    uint16_t sat = (uint16_t)((REG_SPRITE_NT(v) & (h40 ? 0x7E : 0x7F)) << 9);
+ 
+     /* Tracks the first opaque sprite owner per pixel (first-wins; a second
+@@ -687,6 +697,7 @@
+ 
+     int link = 0, on_line = 0, pixels_budget = total;
+-
+-    for (int n = 0; n < max_sprites; n++) {
++    int drawing = 1;
++
++    for (int n = 0; n < max_sprites && link >= 0; n++) {
+         uint16_t e = (uint16_t)(sat + link * 8);
+         int y      = (vram_read_word(v, e) & 0x3FF) - (im2 ? 256 : 128);
+@@ -698,7 +709,11 @@
+         int height = vsz << cell_h_shift;
+         int next   = v->vram[(uint16_t)(e + 3)] & 0x7F;
++        link = next ? next : -1;  /* link 0 terminates the list */
+ 
+         if (line >= y && line < y + height) {
++            /* Sprite count evaluation continues after drawing stops.
++             * Only excess sprites, not exhausted pixel bandwidth, latch SOVR. */
+             if (++on_line > max_per_line && !s_unlimited_sprites) { v->sprite_overflow = 1; break; }
++            if (!drawing) continue;
+ 
+             uint16_t attr = vram_read_word(v, (uint16_t)(e + 4));
+@@ -716,5 +731,8 @@
+             /* Sprite masking: an x==0 sprite after another on-line sprite
+              * masks the rest of the line. */
+-            if (xword == 0 && on_line > 1) break;
++            if (xword == 0 && on_line > 1) {
++                drawing = 0;
++                continue;
++            }
+ 
+             int tile = attr & 0x07FF;
+@@ -813,9 +831,6 @@
+             }
+             pixels_budget -= width;
+-            if (pixels_budget <= 0 && !s_unlimited_sprites) { v->sprite_overflow = 1; break; }
+-        }
+-
+-        if (next == 0) break;     /* link 0 terminates the list */
+-        link = next;
++            if (pixels_budget <= 0 && !s_unlimited_sprites) drawing = 0;
++        }
+     }
+ }
+@@ -1012,5 +1027,5 @@
+     uint16_t base_b=(uint16_t)((REG_PLANEB_NT(v)&7)<<13);
+     int win_wt=MODE4_H40(v)?64:32;
+-    uint16_t base_w=(uint16_t)((REG_WINDOW_NT(v)&(MODE4_H40(v)?0x3e:0x3f))<<10);
++    uint16_t base_w=(uint16_t)((REG_WINDOW_NT(v)&(MODE4_H40(v)?0x3c:0x3e))<<10);
+     uint16_t hbase=(uint16_t)((REG_HSCROLL_NT(v)&63)<<10);
+     int hmode=REG_MODE3(v)&3,hidx=hmode==0?0:hmode==2?rline&~7:rline;
+@@ -1095,5 +1110,5 @@
+ 
+ /* Render one OUTPUT row. `line` is a raster line normally; in interlace
+- * mode 2 it is a double-res row (0..447) — the scheduler calls this twice
++ * mode 2 it is a double-res row (0..447) â€” the scheduler calls this twice
+  * per raster line. Raster-indexed lookups (hscroll table, window boundary)
+  * use the raster line; plane/sprite vertical addressing runs in double-res
+@@ -1136,6 +1151,6 @@
+     uint16_t base_b = (uint16_t)((REG_PLANEB_NT(v) & 0x07) << 13);
+     int win_wt = MODE4_H40(v) ? 64 : 32;
+-    uint16_t base_w = MODE4_H40(v) ? (uint16_t)((REG_WINDOW_NT(v) & 0x3E) << 10)
+-                                   : (uint16_t)((REG_WINDOW_NT(v) & 0x3F) << 10);
++    uint16_t base_w = MODE4_H40(v) ? (uint16_t)((REG_WINDOW_NT(v) & 0x3C) << 10)
++                                   : (uint16_t)((REG_WINDOW_NT(v) & 0x3E) << 10);
+ 
+     /* Horizontal scroll for this line (table is per RASTER line). */
+@@ -1279,5 +1294,5 @@
+             }
+ 
+-            /* Plane A — or the window plane (unscrolled) where the window covers.
++            /* Plane A â€” or the window plane (unscrolled) where the window covers.
+              * The window is unscrolled and cell-addressed: in IM2 its vertical
+              * addressing is still double-res (8x16 cells over the output rows). */

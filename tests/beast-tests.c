@@ -11,6 +11,7 @@ int main(int argc,char**argv){
     CHECK(argc==3);CHECK(!ab_preview_beast_select(NULL));CHECK(!ab_preview_beast_select(&game));
     FILE*f=fopen(argv[1],"rb");CHECK(f);size_t n=fread(rom,1,sizeof rom,f);fclose(f);
     CHECK(ab_game_init(&game,rom,n));ABGameControlRequest stage={1,AB_GAME_STAGE,0};CHECK(ab_game_apply_control(&game,&stage));CHECK(frames(0,90));
+    CHECK(game.raster.frame_width==400&&game.raster.frame_height==224);
     unsigned generation=game.control_generation;CHECK(ab_preview_beast_select(&game));CHECK(game.control_generation==generation+1);
     CHECK((game.raster.bus.ram[0xb141]&127)==0x2c);
     unsigned initial[5];for(unsigned i=0;i<5;++i)initial[i]=word(0xfe08+i*2);
